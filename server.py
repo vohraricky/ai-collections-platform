@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import FastAPI, Request
@@ -438,6 +438,103 @@ def db_enroll_hardship(account_number: str, hardship_reason: str, program_type: 
         db.close()
 
 
+# ── Conversation persistence ───────────────────────────────────────────────────
+
+def _account_ids_from_messages(messages: list) -> tuple[str | None, str | None]:
+    """Scan accumulated messages for the first successful lookup_account result."""
+    for msg in messages:
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if block.get("type") != "tool_result":
+                continue
+            try:
+                data = json.loads(block.get("content", "{}"))
+                if data.get("found") and data.get("account_number"):
+                    db = SessionLocal()
+                    try:
+                        acc = (
+                            db.query(Account)
+                            .filter(Account.account_number == data["account_number"])
+                            .first()
+                        )
+                        if acc:
+                            return acc.id, acc.customer_id
+                    finally:
+                        db.close()
+            except Exception:
+                pass
+    return None, None
+
+
+def _infer_outcome(messages: list) -> InteractionOutcome:
+    for msg in messages:
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if block.get("type") != "tool_result":
+                continue
+            try:
+                data = json.loads(block.get("content", "{}"))
+                if data.get("success"):
+                    if "plan_id" in data:
+                        return InteractionOutcome.ARRANGEMENT_SET
+                    if "enrollment_id" in data:
+                        return InteractionOutcome.HARDSHIP_IDENTIFIED
+            except Exception:
+                pass
+    return InteractionOutcome.NO_RESOLUTION
+
+
+def _save_conversation(
+    account_id: str,
+    customer_id: str,
+    messages: list,
+    started_at: datetime,
+) -> None:
+    db = SessionLocal()
+    try:
+        duration = int((datetime.utcnow() - started_at).total_seconds())
+        outcome = _infer_outcome(messages)
+
+        interaction = Interaction(
+            account_id=account_id,
+            customer_id=customer_id,
+            channel=Channel.INBOUND_CHAT,
+            direction="inbound",
+            initiated_by="customer",
+            is_ai_handled=True,
+            ai_agent_version="alex-v1",
+            contact_status=ContactStatus.CONNECTED,
+            outcome=outcome,
+            duration_seconds=duration,
+            fdcpa_disclosure_given=True,
+            notes=json.dumps(messages, default=str),
+        )
+        db.add(interaction)
+        db.flush()
+
+        db.add(ComplianceEvent(
+            account_id=account_id,
+            interaction_id=interaction.id,
+            event_type=ComplianceEventType.FDCPA_DISCLOSURE,
+            recorded_by="AI_AGENT",
+            channel="chat",
+            description="Mini-Miranda given at session start by Alex",
+            verified=True,
+        ))
+
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 # ── Tool dispatch ──────────────────────────────────────────────────────────────
 
 def execute_tool(name: str, inputs: dict) -> dict:
@@ -479,72 +576,85 @@ async def chat(request: ChatRequest):
 
     async def generate():
         current_messages = messages
+        started_at = datetime.utcnow()
+        saved = False
 
-        while True:
-            async with client.messages.stream(
-                model="claude-sonnet-4-6",
-                system=[
-                    {
-                        "type": "text",
-                        "text": SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                tools=TOOLS,
-                messages=current_messages,
-                max_tokens=1024,
-                thinking={"type": "disabled"},
-            ) as stream:
-                async for event in stream:
-                    if event.type == "content_block_delta":
-                        if hasattr(event.delta, "text") and event.delta.text:
-                            payload = json.dumps({"type": "text", "text": event.delta.text})
-                            yield f"data: {payload}\n\n"
+        try:
+            while True:
+                async with client.messages.stream(
+                    model="claude-sonnet-4-6",
+                    system=[
+                        {
+                            "type": "text",
+                            "text": SYSTEM_PROMPT,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                    tools=TOOLS,
+                    messages=current_messages,
+                    max_tokens=1024,
+                    thinking={"type": "disabled"},
+                ) as stream:
+                    async for event in stream:
+                        if event.type == "content_block_delta":
+                            if hasattr(event.delta, "text") and event.delta.text:
+                                payload = json.dumps({"type": "text", "text": event.delta.text})
+                                yield f"data: {payload}\n\n"
 
-                final = await stream.get_final_message()
+                    final = await stream.get_final_message()
 
-            if final.stop_reason == "end_turn":
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                break
+                if final.stop_reason == "end_turn":
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    account_id, customer_id = _account_ids_from_messages(current_messages)
+                    if account_id:
+                        _save_conversation(account_id, customer_id, current_messages, started_at)
+                        saved = True
+                    break
 
-            elif final.stop_reason == "tool_use":
-                assistant_content = []
-                for block in final.content:
-                    if block.type == "text":
-                        assistant_content.append({"type": "text", "text": block.text})
-                    elif block.type == "tool_use":
-                        assistant_content.append({
-                            "type": "tool_use",
-                            "id": block.id,
-                            "name": block.name,
-                            "input": block.input,
-                        })
+                elif final.stop_reason == "tool_use":
+                    assistant_content = []
+                    for block in final.content:
+                        if block.type == "text":
+                            assistant_content.append({"type": "text", "text": block.text})
+                        elif block.type == "tool_use":
+                            assistant_content.append({
+                                "type": "tool_use",
+                                "id": block.id,
+                                "name": block.name,
+                                "input": block.input,
+                            })
 
-                current_messages = current_messages + [
-                    {"role": "assistant", "content": assistant_content}
-                ]
+                    current_messages = current_messages + [
+                        {"role": "assistant", "content": assistant_content}
+                    ]
 
-                tool_results = []
-                for block in final.content:
-                    if block.type == "tool_use":
-                        yield f"data: {json.dumps({'type': 'tool_start', 'tool': block.name})}\n\n"
+                    tool_results = []
+                    for block in final.content:
+                        if block.type == "tool_use":
+                            yield f"data: {json.dumps({'type': 'tool_start', 'tool': block.name})}\n\n"
 
-                        result = execute_tool(block.name, block.input)
+                            result = execute_tool(block.name, block.input)
 
-                        yield f"data: {json.dumps({'type': 'tool_result', 'tool': block.name, 'data': result})}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_result', 'tool': block.name, 'data': result})}\n\n"
 
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": json.dumps(result),
-                        })
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": json.dumps(result),
+                            })
 
-                current_messages = current_messages + [
-                    {"role": "user", "content": tool_results}
-                ]
-            else:
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                break
+                    current_messages = current_messages + [
+                        {"role": "user", "content": tool_results}
+                    ]
+                else:
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    break
+        finally:
+            # Save on client disconnect or error if not already saved
+            if not saved:
+                account_id, customer_id = _account_ids_from_messages(current_messages)
+                if account_id:
+                    _save_conversation(account_id, customer_id, current_messages, started_at)
 
     return StreamingResponse(
         generate(),
