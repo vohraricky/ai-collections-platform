@@ -479,6 +479,113 @@
       background: #064e3b; color: #34d399; font-size: 0.78rem; font-weight: 600;
       padding: 0.3rem 0.7rem; border-radius: 6px; display: inline-block; margin-top: 0.6rem;
     }
+
+    /* ── Customer 360 ── */
+    #c360View {
+      flex: 1; overflow-y: auto; padding: 1.5rem; background: #0b1120;
+    }
+    .c360-grid {
+      display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; max-width: 1100px;
+    }
+    .c360-card {
+      background: #111827; border: 1px solid #1e293b; border-radius: 12px; padding: 1.25rem;
+    }
+    .c360-title { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #475569; margin-bottom: 0.85rem; }
+    .score-ring-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-bottom: 1rem;
+    }
+    .score-ring {
+      width: 120px; height: 120px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; font-weight: 800; letter-spacing: -1px;
+      border: 8px solid;
+    }
+    .ring-very_low { border-color: #34d399; color: #34d399; }
+    .ring-low      { border-color: #34d399; color: #34d399; }
+    .ring-medium   { border-color: #fbbf24; color: #fbbf24; }
+    .ring-high     { border-color: #f87171; color: #f87171; }
+    .ring-critical { border-color: #ef4444; color: #ef4444; box-shadow: 0 0 20px #ef444455; }
+    .score-tier {
+      font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+    }
+    .tier-very_low,.tier-low     { color: #34d399; }
+    .tier-medium                 { color: #fbbf24; }
+    .tier-high,.tier-critical    { color: #f87171; }
+    .urgency-badge {
+      display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.65rem;
+      border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .urg-none    { background:#0f2a1a; color:#34d399; }
+    .urg-monitor { background:#1a2a0f; color:#a3e635; }
+    .urg-engage  { background:#2a1f00; color:#fbbf24; }
+    .urg-urgent  { background:#2a0f00; color:#f97316; }
+    .urg-critical{ background:#2a0000; color:#f87171; box-shadow:0 0 8px #ef444433; }
+    .component-bar { margin-bottom: 0.75rem; }
+    .comp-label { display: flex; justify-content: space-between; font-size: 0.77rem; color: #94a3b8; margin-bottom: 0.3rem; }
+    .comp-label span:last-child { font-weight: 600; color: #e2e8f0; }
+    .bar-track { background: #0f172a; border-radius: 4px; height: 8px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+    .bar-good   { background: #10b981; }
+    .bar-ok     { background: #fbbf24; }
+    .bar-bad    { background: #f87171; }
+    .prediction-row {
+      display: flex; gap: 1rem; margin-bottom: 0.85rem;
+    }
+    .pred-block {
+      flex: 1; background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 0.65rem;
+    }
+    .pred-label { font-size: 0.68rem; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
+    .pred-value { font-size: 1.2rem; font-weight: 700; margin-top: 0.15rem; }
+    .pred-chargeoff { color: #f87171; }
+    .pred-cure { color: #34d399; }
+    .tradeline-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .tradeline-table th { color: #475569; font-weight: 500; text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid #1e293b; }
+    .tradeline-table td { padding: 0.4rem; border-bottom: 1px solid #0f172a; color: #94a3b8; }
+    .tradeline-table tr:last-child td { border-bottom: none; }
+    .tl-derog { color: #f87171 !important; }
+    .tl-dpd { color: #fbbf24; }
+    .banking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .bank-signal {
+      background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 0.6rem;
+    }
+    .bank-signal.alert { border-color: #7f1d1d; }
+    .bank-label { font-size: 0.68rem; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
+    .bank-value { font-size: 0.95rem; font-weight: 600; margin-top: 0.15rem; color: #e2e8f0; }
+    .bank-value.bad { color: #f87171; }
+    .bank-value.ok  { color: #fbbf24; }
+    .bank-value.good{ color: #34d399; }
+    .life-event-item {
+      display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.65rem 0;
+      border-bottom: 1px solid #0f172a; font-size: 0.8rem;
+    }
+    .life-event-item:last-child { border-bottom: none; }
+    .le-icon {
+      width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+    }
+    .le-type { font-weight: 600; color: #f1f5f9; font-size: 0.82rem; }
+    .le-meta { font-size: 0.73rem; color: #475569; margin-top: 2px; }
+    .strategy-box {
+      background: #0f2a1a; border: 1px solid #065f46; border-radius: 8px; padding: 0.75rem;
+      font-size: 0.82rem; color: #6ee7b7; line-height: 1.6;
+    }
+    .offer-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.6rem; }
+    .offer-chip {
+      background: #0f172a; border: 1px solid #1e293b; color: #94a3b8;
+      font-size: 0.72rem; padding: 0.2rem 0.55rem; border-radius: 12px;
+    }
+    .c360-search { display: flex; gap: 0.65rem; margin-bottom: 1.25rem; max-width: 400px; }
+    .c360-input {
+      flex: 1; background: #0f172a; border: 1px solid #1e293b; color: #e2e8f0;
+      padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.87rem;
+    }
+    .c360-input:focus { outline: none; border-color: #3b82f6; }
+    .c360-load-btn {
+      background: #1d4ed8; border: none; color: white; cursor: pointer;
+      padding: 0.5rem 1.1rem; border-radius: 8px; font-size: 0.87rem; font-weight: 600;
+      white-space: nowrap; transition: background 0.15s;
+    }
+    .c360-load-btn:hover { background: #2563eb; }
   </style>
 </head>
 <body>
@@ -490,6 +597,7 @@
     <button class="tab active" id="tabChat" onclick="switchTab('chat')">Chat</button>
     <button class="tab" id="tabOutreach" onclick="switchTab('outreach')">Outreach Queue</button>
     <button class="tab" id="tabInbound" onclick="switchTab('inbound')">Inbound Simulator</button>
+    <button class="tab" id="tabC360" onclick="switchTab('c360')">Customer 360</button>
   </div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
     <div class="status-dot"></div>
@@ -591,6 +699,22 @@
   <div class="outreach-grid" id="candidateList">
     <div style="color:#475569;text-align:center;padding:3rem 0">Select the Outreach Queue tab to load candidates.</div>
   </div>
+</div>
+<div id="c360View" style="display:none">
+  <div style="margin-bottom:1.25rem">
+    <div class="outreach-title">Customer 360 — Holistic Risk View</div>
+    <div class="outreach-sub">Cross-creditor signals, banking health, life events, and AI-computed risk score</div>
+  </div>
+  <div class="c360-search">
+    <input class="c360-input" id="c360AcctInput" placeholder="Enter account number (e.g. ACC001)" onkeydown="if(event.key==='Enter')loadC360Profile()"/>
+    <button class="c360-load-btn" onclick="loadC360Profile()">Load Profile</button>
+  </div>
+  <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
+    <button class="qr-btn" onclick="document.getElementById('c360AcctInput').value='ACC001';loadC360Profile()">ACC001 — Sarah</button>
+    <button class="qr-btn" onclick="document.getElementById('c360AcctInput').value='ACC002';loadC360Profile()">ACC002 — Marcus</button>
+    <button class="qr-btn" onclick="document.getElementById('c360AcctInput').value='ACC003';loadC360Profile()">ACC003 — Elena</button>
+  </div>
+  <div id="c360Content" style="color:#334155;text-align:center;padding:3rem 0">Select an account to load the Customer 360 profile.</div>
 </div>
 </main>
 
@@ -770,6 +894,7 @@
       lookup_account: 'Looking up account',
       create_payment_plan: 'Setting up payment plan',
       enroll_hardship_program: 'Enrolling in hardship program',
+      get_customer_profile: 'Loading Customer 360 profile',
     };
     return map[name] || name;
   }
@@ -953,7 +1078,8 @@
     document.getElementById('chatView').style.display     = tab === 'chat'     ? 'flex'  : 'none';
     document.getElementById('outreachView').style.display = tab === 'outreach' ? 'block' : 'none';
     document.getElementById('inboundView').style.display  = tab === 'inbound'  ? 'block' : 'none';
-    ['Chat','Outreach','Inbound'].forEach(t =>
+    document.getElementById('c360View').style.display     = tab === 'c360'     ? 'block' : 'none';
+    ['Chat','Outreach','Inbound','C360'].forEach(t =>
       document.getElementById('tab' + t).classList.toggle('active', tab === t.toLowerCase())
     );
     if (tab === 'outreach') loadCandidates();
@@ -1085,6 +1211,241 @@
     dispatchBtn.style.display = 'inline-block';
     dispatchBtn.dataset.message = message;
     dispatchBtn.dataset.channel = channel;
+  }
+
+  // ── Customer 360 ──────────────────────────────────────────────
+  async function loadC360Profile() {
+    const acct = document.getElementById('c360AcctInput').value.trim().toUpperCase();
+    if (!acct) return;
+    const content = document.getElementById('c360Content');
+    content.innerHTML = '<div style="color:#475569;text-align:center;padding:3rem 0">Loading Customer 360 profile…</div>';
+    try {
+      const res = await fetch(`/customer/${acct}/profile`);
+      const data = await res.json();
+      if (!data.found) {
+        content.innerHTML = `<div style="color:#f87171;text-align:center;padding:2rem">Account ${acct} not found.</div>`;
+        return;
+      }
+      content.innerHTML = '';
+      content.appendChild(renderC360(data));
+    } catch (e) {
+      content.innerHTML = `<div style="color:#f87171;text-align:center;padding:2rem">Error: ${e.message}</div>`;
+    }
+  }
+
+  function renderC360(d) {
+    const wrap = document.createElement('div');
+    wrap.className = 'c360-grid';
+
+    // ── Left column: score + components + predictions + strategy
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.flexDirection = 'column';
+    left.style.gap = '1rem';
+
+    const tier = d.holistic_risk_tier || 'low';
+    const urgency = d.intervention_urgency || 'none';
+    const scoreCard = document.createElement('div');
+    scoreCard.className = 'c360-card';
+    scoreCard.innerHTML = `
+      <div class="c360-title">${escHtml(d.customer_name)} &middot; ${d.account_number}</div>
+      <div class="score-ring-wrap">
+        <div class="score-ring ring-${tier}">${d.holistic_risk_score ?? '—'}</div>
+        <div class="score-tier tier-${tier}">${tier.replace('_',' ')} risk</div>
+        <span class="urgency-badge urg-${urgency}">${urgency}</span>
+      </div>
+      <div class="prediction-row">
+        <div class="pred-block">
+          <div class="pred-label">Charge-Off Risk</div>
+          <div class="pred-value pred-chargeoff">${d.predicted_chargeoff_risk != null ? Math.round(d.predicted_chargeoff_risk*100)+'%' : '—'}</div>
+        </div>
+        <div class="pred-block">
+          <div class="pred-label">Cure Probability</div>
+          <div class="pred-value pred-cure">${d.predicted_cure_probability != null ? Math.round(d.predicted_cure_probability*100)+'%' : '—'}</div>
+        </div>
+      </div>
+      ${d.debt_to_income_ratio != null ? `
+        <div class="stat-row" style="border-top:1px solid #0f172a;padding-top:0.4rem">
+          <span class="stat-label">Debt-to-Income Ratio</span>
+          <span class="stat-value ${d.debt_to_income_ratio > 0.5 ? 'bad' : d.debt_to_income_ratio > 0.35 ? 'ok' : 'good'}">${(d.debt_to_income_ratio*100).toFixed(0)}%</span>
+        </div>
+      ` : ''}
+      ${d.estimated_monthly_income != null ? `
+        <div class="stat-row">
+          <span class="stat-label">Est. Monthly Income</span>
+          <span class="stat-value">$${d.estimated_monthly_income.toLocaleString()}</span>
+        </div>
+      ` : ''}
+      <div class="stat-row" style="border-bottom:none">
+        <span class="stat-label">Primary Risk Driver</span>
+        <span class="stat-value bad">${d.primary_risk_driver ?? '—'}</span>
+      </div>
+    `;
+    left.appendChild(scoreCard);
+
+    if (d.component_scores) {
+      const compCard = document.createElement('div');
+      compCard.className = 'c360-card';
+      const compLabels = {
+        payment_capacity: 'Payment Capacity',
+        cross_creditor_stress: 'Cross-Creditor Stress',
+        behavioral_stability: 'Behavioral Stability',
+        banking_liquidity: 'Banking Liquidity',
+        life_event_impact: 'Life Event Impact',
+        engagement: 'Engagement',
+      };
+      compCard.innerHTML = '<div class="c360-title">Component Scores (0–100)</div>' +
+        Object.entries(d.component_scores).map(([k, v]) => {
+          const barClass = v >= 70 ? 'bar-good' : v >= 45 ? 'bar-ok' : 'bar-bad';
+          return `<div class="component-bar">
+            <div class="comp-label">
+              <span>${compLabels[k] || k}</span><span>${v}</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill ${barClass}" style="width:${v}%"></div></div>
+          </div>`;
+        }).join('');
+      left.appendChild(compCard);
+    }
+
+    if (d.recommended_strategy) {
+      const stratCard = document.createElement('div');
+      stratCard.className = 'c360-card';
+      stratCard.innerHTML = `
+        <div class="c360-title">Recommended Strategy</div>
+        <div class="strategy-box">${escHtml(d.recommended_strategy)}</div>
+        ${d.recommended_offer_priority ? `
+          <div class="offer-chips">${d.recommended_offer_priority.map(o =>
+            `<span class="offer-chip">${o.replace(/_/g,' ')}</span>`).join('')}
+          </div>` : ''}
+      `;
+      left.appendChild(stratCard);
+    }
+
+    wrap.appendChild(left);
+
+    // ── Right column: bureau tradelines + banking + life events + all accounts
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.flexDirection = 'column';
+    right.style.gap = '1rem';
+
+    // Bureau tradelines
+    if (d.bureau_summary) {
+      const bs = d.bureau_summary;
+      const bureauCard = document.createElement('div');
+      bureauCard.className = 'c360-card';
+      bureauCard.innerHTML = `
+        <div class="c360-title">Bureau Tradelines — ${bs.total_tradelines} total &middot; ${bs.derogatory_count} derogatory &middot; max ${bs.cross_creditor_max_dpd} DPD
+          ${bs.pull_date ? `<span style="color:#334155;font-weight:400;margin-left:0.5rem">as of ${bs.pull_date}</span>` : ''}
+        </div>
+        ${bs.tradelines && bs.tradelines.length ? `
+        <table class="tradeline-table">
+          <thead><tr>
+            <th>Creditor</th><th>Type</th><th>Balance</th><th>Util%</th><th>DPD</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+            ${bs.tradelines.map(t => `
+              <tr>
+                <td class="${t.derogatory ? 'tl-derog' : ''}">${escHtml(t.creditor)}</td>
+                <td>${t.type || '—'}</td>
+                <td>$${t.balance.toLocaleString()}</td>
+                <td>${t.utilization_pct != null ? t.utilization_pct+'%' : '—'}</td>
+                <td class="${(t.days_past_due||0) > 0 ? 'tl-dpd' : ''}">${t.days_past_due || 0}</td>
+                <td class="${t.derogatory ? 'tl-derog' : ''}">${t.status}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>` : '<div style="color:#334155;font-size:0.8rem;padding:0.5rem 0">No bureau data on file.</div>'}
+      `;
+      right.appendChild(bureauCard);
+    }
+
+    // Banking behavior
+    if (d.banking_behavior) {
+      const bb = d.banking_behavior;
+      const bankCard = document.createElement('div');
+      bankCard.className = 'c360-card';
+      const ddChange = bb.direct_deposit_change_pct;
+      const ddClass = !bb.direct_deposit_present ? 'bad' : (ddChange != null && ddChange < -0.15) ? 'ok' : 'good';
+      const ddText = !bb.direct_deposit_present ? 'Not Present' : bb.direct_deposit_amount != null ? `$${bb.direct_deposit_amount.toLocaleString()}/mo` : 'Present';
+      const nsfClass = (bb.nsf_count || 0) > 2 ? 'bad' : (bb.nsf_count || 0) > 0 ? 'ok' : 'good';
+      const liqClass = (bb.liquidity_score || 0) > 0.6 ? 'good' : (bb.liquidity_score || 0) > 0.3 ? 'ok' : 'bad';
+      bankCard.innerHTML = `
+        <div class="c360-title">Banking Behavior ${bb.observation_date ? `<span style="color:#334155;font-weight:400">as of ${bb.observation_date}</span>` : ''}</div>
+        <div class="banking-grid">
+          <div class="bank-signal ${ddClass === 'bad' ? 'alert' : ''}">
+            <div class="bank-label">Direct Deposit</div>
+            <div class="bank-value ${ddClass}">${ddText}</div>
+          </div>
+          <div class="bank-signal ${liqClass === 'bad' ? 'alert' : ''}">
+            <div class="bank-label">Liquidity Score</div>
+            <div class="bank-value ${liqClass}">${bb.liquidity_score != null ? Math.round(bb.liquidity_score*100)+'/100' : '—'}</div>
+          </div>
+          <div class="bank-signal ${nsfClass === 'bad' ? 'alert' : ''}">
+            <div class="bank-label">NSF Events</div>
+            <div class="bank-value ${nsfClass}">${bb.nsf_count ?? 0}</div>
+          </div>
+          <div class="bank-signal ${(bb.overdraft_count||0) > 1 ? 'alert' : ''}">
+            <div class="bank-label">Overdrafts</div>
+            <div class="bank-value ${(bb.overdraft_count||0) > 1 ? 'bad' : 'good'}">${bb.overdraft_count ?? 0}</div>
+          </div>
+          <div class="bank-signal">
+            <div class="bank-label">Avg Checking</div>
+            <div class="bank-value">${bb.checking_avg_balance != null ? '$'+bb.checking_avg_balance.toLocaleString() : '—'}</div>
+          </div>
+          <div class="bank-signal ${bb.savings_change_pct != null && bb.savings_change_pct < -0.3 ? 'alert' : ''}">
+            <div class="bank-label">Savings Trend</div>
+            <div class="bank-value ${bb.savings_change_pct != null && bb.savings_change_pct < -0.25 ? 'bad' : 'good'}">${bb.savings_change_pct != null ? (bb.savings_change_pct>=0?'+':'')+(bb.savings_change_pct*100).toFixed(0)+'%' : '—'}</div>
+          </div>
+        </div>
+      `;
+      right.appendChild(bankCard);
+    }
+
+    // Life events
+    const evCard = document.createElement('div');
+    evCard.className = 'c360-card';
+    const _leIcons = {
+      job_loss:'💼', job_change:'💼', income_reduction:'📉', divorce:'💔',
+      medical_diagnosis:'🏥', death_in_family:'🕊️', relocation:'🏠',
+      new_dependent:'👶', bankruptcy:'⚖️', natural_disaster:'🌪️',
+      military_deployment:'🎖️', other:'📌',
+    };
+    const events = d.active_life_events || [];
+    evCard.innerHTML = `
+      <div class="c360-title">Active Life Events (${events.length})</div>
+      ${events.length ? events.map(e => `
+        <div class="life-event-item">
+          <div class="le-icon" style="background:#1e293b">${_leIcons[e.type] || '📌'}</div>
+          <div>
+            <div class="le-type">${(e.type||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</div>
+            <div class="le-meta">
+              ${e.date} &middot; ${(e.source||'').replace(/_/g,' ')} &middot; confidence ${Math.round((e.confidence||1)*100)}%
+              ${e.income_change_pct != null ? ` &middot; income ${e.income_change_pct>=0?'+':''}${(e.income_change_pct*100).toFixed(0)}%` : ''}
+            </div>
+            ${e.description ? `<div style="font-size:0.76rem;color:#64748b;margin-top:3px;font-style:italic">${escHtml(e.description.substring(0,120))}${e.description.length>120?'…':''}</div>` : ''}
+          </div>
+        </div>`).join('')
+      : '<div style="color:#334155;font-size:0.8rem;padding:0.3rem 0">No active life events on file.</div>'}
+    `;
+    right.appendChild(evCard);
+
+    // All accounts at-a-glance
+    if (d.all_accounts && d.all_accounts.length > 1) {
+      const acctCard = document.createElement('div');
+      acctCard.className = 'c360-card';
+      acctCard.innerHTML = `
+        <div class="c360-title">All Accounts at Premier Bank</div>
+        ${d.all_accounts.map(a => `
+          <div class="stat-row" style="${a.is_this_account ? 'border-left:2px solid #3b82f6;padding-left:0.4rem' : ''}">
+            <span class="stat-label">${a.account_number}${a.is_this_account ? ' ●' : ''}</span>
+            <span class="stat-value">$${a.balance.toLocaleString()} &middot; <span class="${a.days_past_due>60?'bad':a.days_past_due>0?'ok':'good'}">${a.days_past_due} DPD</span></span>
+          </div>`).join('')}
+      `;
+      right.appendChild(acctCard);
+    }
+
+    wrap.appendChild(right);
+    return wrap;
   }
 
   async function logDispatch(acctNum) {

@@ -149,6 +149,28 @@ class SignalSeverity(str, enum.Enum):
     CRITICAL = "critical"
 
 
+class LifeEventType(str, enum.Enum):
+    JOB_LOSS            = "job_loss"
+    JOB_CHANGE          = "job_change"
+    INCOME_REDUCTION    = "income_reduction"
+    DIVORCE             = "divorce"
+    MEDICAL_DIAGNOSIS   = "medical_diagnosis"
+    DEATH_IN_FAMILY     = "death_in_family"
+    RELOCATION          = "relocation"
+    NEW_DEPENDENT       = "new_dependent"
+    BANKRUPTCY          = "bankruptcy"
+    NATURAL_DISASTER    = "natural_disaster"
+    MILITARY_DEPLOYMENT = "military_deployment"
+    OTHER               = "other"
+
+
+class LifeEventSource(str, enum.Enum):
+    SELF_REPORTED       = "self_reported"
+    BEHAVIORAL_INFERRED = "behavioral_inferred"
+    BUREAU_INFERRED     = "bureau_inferred"
+    EMPLOYMENT_RECORD   = "employment_record"
+
+
 class ComplianceEventType(str, enum.Enum):
     FDCPA_DISCLOSURE       = "fdcpa_disclosure"
     MINI_MIRANDA_GIVEN     = "mini_miranda_given"
@@ -201,6 +223,26 @@ class Customer(Base, TimestampMixin):
     addresses           = relationship("Address",           back_populates="customer", order_by="Address.is_current.desc()")
     employment_records  = relationship("EmploymentRecord",  back_populates="customer", order_by="EmploymentRecord.reported_date.desc()")
     contact_preferences = relationship("ContactPreference", back_populates="customer")
+    bureau_tradelines   = relationship("BureauTradeline",   back_populates="customer",
+                                       order_by="BureauTradeline.pull_date.desc()")
+    banking_behaviors   = relationship("BankingBehavior",   back_populates="customer",
+                                       order_by="BankingBehavior.observation_date.desc()")
+    life_events         = relationship("LifeEvent",         back_populates="customer",
+                                       order_by="LifeEvent.event_date.desc()")
+    risk_scores         = relationship("CustomerRiskScore", back_populates="customer",
+                                       order_by="CustomerRiskScore.snapshot_date.desc()")
+
+    @property
+    def latest_risk_score(self) -> "CustomerRiskScore | None":
+        return self.risk_scores[0] if self.risk_scores else None
+
+    @property
+    def active_life_events(self) -> list:
+        today = datetime.utcnow().date()
+        return [
+            e for e in self.life_events
+            if not e.resolved and (e.expires_at is None or e.expires_at >= today)
+        ]
 
     def __repr__(self) -> str:
         return f"<Customer {self.first_name} {self.last_name} id={self.id[:8]}>"
@@ -344,6 +386,8 @@ class Account(Base, TimestampMixin):
     hardship_enrollments = relationship("HardshipEnrollment", back_populates="account")
     compliance_events    = relationship("ComplianceEvent",    back_populates="account",
                                         order_by="ComplianceEvent.event_datetime.desc()")
+    banking_behaviors    = relationship("BankingBehavior",   back_populates="account")
+    life_events          = relationship("LifeEvent",         back_populates="account")
 
     @property
     def latest_risk(self) -> "RiskProfile | None":
@@ -629,4 +673,228 @@ class ComplianceEvent(Base):
     __table_args__ = (
         Index("idx_compliance_account_type", "account_id", "event_type"),
         Index("idx_compliance_datetime",     "event_datetime"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Customer 360 — Holistic Signal Tables
+# ─────────────────────────────────────────────────────────────────────────────
+
+class BureauTradeline(Base):
+    """
+    One row per tradeline from a credit bureau pull.
+    Covers ALL of the customer's credit relationships, not just Premier Bank.
+    A fresh pull replaces the prior set (same pull_date group).
+    """
+    __tablename__ = "bureau_tradelines"
+
+    id              = Column(String(36), primary_key=True, default=_uuid)
+    customer_id     = Column(String(36), ForeignKey("customers.id"), nullable=False, index=True)
+    pull_date       = Column(Date, nullable=False)
+    creditor_name   = Column(String(200))
+    account_type    = Column(String(30),
+                             comment="mortgage|auto_loan|credit_card|student_loan|personal_loan|heloc|collection|other")
+    account_status  = Column(String(20), default="open",
+                             comment="open|closed|derogatory|collection|charged_off")
+    credit_limit    = Column(Numeric(12, 2))
+    current_balance = Column(Numeric(12, 2))
+    monthly_payment = Column(Numeric(12, 2))
+    utilization_pct = Column(Float, comment="balance / credit_limit for revolving; null for installment")
+    days_past_due   = Column(Integer, default=0)
+    times_30_dpd    = Column(Integer, default=0, comment="Lifetime count of 30+ DPD occurrences")
+    times_60_dpd    = Column(Integer, default=0)
+    times_90_dpd    = Column(Integer, default=0)
+    opened_date     = Column(Date)
+    derogatory      = Column(Boolean, default=False)
+    derogatory_date = Column(Date)
+    bureau_source   = Column(String(20), default="equifax")
+    payment_pattern = Column(String(84), comment="Up to 84-month history, most-recent-first (C=current, 1=30DPD, X=charge-off)")
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="bureau_tradelines")
+
+    __table_args__ = (
+        Index("idx_tradeline_customer_date", "customer_id", "pull_date"),
+    )
+
+
+class BankingBehavior(Base):
+    """
+    Point-in-time snapshot of a customer's internal banking signals.
+    Requires same-institution relationship (checking/savings at Premier Bank).
+
+    Key predictive signals by importance:
+    1. direct_deposit_present=False / large negative direct_deposit_change_pct → income shock
+    2. nsf_count + overdraft_count → cash stress
+    3. checking_min_balance trending toward zero → liquidity crisis
+    4. savings withdrawal spikes → emergency fund depletion
+    """
+    __tablename__ = "banking_behavior"
+
+    id                          = Column(String(36), primary_key=True, default=_uuid)
+    customer_id                 = Column(String(36), ForeignKey("customers.id"), nullable=False, index=True)
+    account_id                  = Column(String(36), ForeignKey("accounts.id"), index=True,
+                                         comment="Nullable — set when signal is specific to one card account")
+    observation_date            = Column(Date, nullable=False)
+    period_days                 = Column(Integer, default=30)
+
+    # Checking account
+    checking_avg_balance        = Column(Numeric(12, 2))
+    checking_min_balance        = Column(Numeric(12, 2),
+                                         comment="Lowest balance hit in period — overdraft proximity")
+    direct_deposit_present      = Column(Boolean, default=True)
+    direct_deposit_amount       = Column(Numeric(12, 2), comment="Monthly total of direct deposit credits")
+    direct_deposit_change_pct   = Column(Float,
+                                         comment="MoM change in DD amount; -0.20 = 20% income drop")
+    nsf_count                   = Column(Integer, default=0)
+    overdraft_count             = Column(Integer, default=0)
+    overdraft_amount_total      = Column(Numeric(12, 2))
+    atm_cash_withdrawal_total   = Column(Numeric(12, 2),
+                                         comment="Elevated cash withdrawals signal liquidity stress")
+
+    # Savings
+    savings_avg_balance         = Column(Numeric(12, 2))
+    savings_change_pct          = Column(Float,
+                                         comment="Change in savings balance over period; negative = depleting")
+    savings_withdrawal_count    = Column(Integer, default=0)
+
+    # Spending mix (from debit card and ACH)
+    spend_total                 = Column(Numeric(12, 2))
+    spend_change_pct            = Column(Float)
+    spend_essentials_pct        = Column(Float,
+                                         comment="Groceries/gas/pharmacy/utilities as % of total spend")
+    spend_discretionary_pct     = Column(Float,
+                                         comment="Dining/entertainment/travel as % of total spend")
+
+    # Derived composite
+    liquidity_score             = Column(Float,
+                                         comment="0-1 composite of balance cushion, NSF, overdraft, income stability")
+
+    source                      = Column(String(30), default="core_banking")
+    created_at                  = Column(DateTime, default=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="banking_behaviors")
+    account  = relationship("Account",  back_populates="banking_behaviors",
+                            foreign_keys=[account_id])
+
+    __table_args__ = (
+        Index("idx_banking_customer_date", "customer_id", "observation_date"),
+    )
+
+
+class LifeEvent(Base):
+    """
+    Detected or self-reported life events that explain financial behavior shifts.
+    Source tracks whether the event was disclosed by the customer or inferred
+    from banking/bureau signals — important for confidence weighting in scoring.
+
+    expires_at controls how long this event continues to depress the risk score.
+    resolved=True when the financial impact has stabilized (e.g. new job found).
+    """
+    __tablename__ = "life_events"
+
+    id               = Column(String(36), primary_key=True, default=_uuid)
+    customer_id      = Column(String(36), ForeignKey("customers.id"), nullable=False, index=True)
+    account_id       = Column(String(36), ForeignKey("accounts.id"), index=True, comment="Optional")
+    event_type       = Column(SAEnum(LifeEventType), nullable=False, index=True)
+    event_date       = Column(Date, nullable=False, comment="When the event occurred")
+    detected_date    = Column(Date, nullable=False, comment="When the platform became aware")
+    source           = Column(SAEnum(LifeEventSource), nullable=False)
+    confidence       = Column(Float, default=1.0, comment="0-1; 1.0 = self-reported or confirmed")
+    description      = Column(Text, comment="Customer's own words if self-reported; algorithm rationale if inferred")
+    impact_on_income = Column(String(20), default="negative", comment="positive|negative|neutral|unknown")
+    income_change_pct = Column(Float, comment="Estimated income % change; -1.0 = total income loss")
+    resolved         = Column(Boolean, default=False)
+    resolved_date    = Column(Date)
+    expires_at       = Column(Date, comment="Stop penalizing score after this date even if unresolved")
+    metadata_        = Column("metadata", JSON, comment="Event-specific details")
+    created_at       = Column(DateTime, default=datetime.utcnow)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="life_events")
+    account  = relationship("Account",  back_populates="life_events",
+                            foreign_keys=[account_id])
+
+    __table_args__ = (
+        Index("idx_life_event_customer_date", "customer_id", "event_date"),
+        Index("idx_life_event_active",        "resolved", "expires_at"),
+    )
+
+
+class CustomerRiskScore(Base):
+    """
+    Holistic customer-level risk score — aggregates signals across ALL accounts,
+    bureau tradelines, banking behavior, and life events.
+
+    Distinct from RiskProfile (which is account-level). This answers:
+    "Is this customer at systemic risk?" rather than "Is this one account late?"
+
+    Component scores (each 0-100, higher = healthier / less risk):
+    - payment_capacity:      estimated ability to pay based on income vs obligations
+    - cross_creditor_stress: bureau picture across all creditors
+    - behavioral_stability:  on-us behavioral signal quality
+    - banking_liquidity:     checking/savings stability and income signals
+    - life_event_impact:     penalty from active unresolved life events
+    - engagement:            responsiveness to outreach and promise reliability
+    """
+    __tablename__ = "customer_risk_scores"
+
+    id                          = Column(String(36), primary_key=True, default=_uuid)
+    customer_id                 = Column(String(36), ForeignKey("customers.id"),
+                                         nullable=False, index=True)
+    snapshot_date               = Column(Date, nullable=False)
+    model_version               = Column(String(30), default="holistic-v1")
+
+    # Composite
+    holistic_risk_score         = Column(Integer,
+                                         comment="0-1000; higher = greater risk across all accounts and signals")
+    holistic_risk_tier          = Column(String(20),
+                                         comment="very_low|low|medium|high|critical")
+
+    # Component scores (0-100)
+    payment_capacity_score      = Column(Integer)
+    cross_creditor_stress_score = Column(Integer)
+    behavioral_stability_score  = Column(Integer)
+    banking_liquidity_score     = Column(Integer)
+    life_event_impact_score     = Column(Integer)
+    engagement_score            = Column(Integer)
+
+    # Derived financial ratios
+    estimated_monthly_income    = Column(Numeric(12, 2))
+    total_monthly_obligations   = Column(Numeric(12, 2))
+    debt_to_income_ratio        = Column(Float)
+    bureau_derogatory_count     = Column(Integer, default=0)
+    cross_creditor_max_dpd      = Column(Integer, default=0)
+
+    # Active context
+    active_life_event           = Column(Boolean, default=False)
+    active_life_event_types     = Column(JSON, comment="List of LifeEventType values currently active")
+    accounts_delinquent         = Column(Integer, default=0)
+    accounts_total              = Column(Integer, default=0)
+    max_dpd_own_accounts        = Column(Integer, default=0)
+    total_own_exposure          = Column(Numeric(12, 2))
+
+    # Predictions
+    predicted_chargeoff_risk    = Column(Float, comment="0-1: 12-month charge-off probability")
+    predicted_cure_probability  = Column(Float, comment="0-1: probability of self-cure without intervention")
+    intervention_urgency        = Column(String(20), comment="none|monitor|engage|urgent|critical")
+
+    # Recommendations
+    recommended_strategy        = Column(Text)
+    recommended_offer_priority  = Column(JSON, comment="Ordered list e.g. ['hardship','payment_plan']")
+
+    # Explainability
+    primary_risk_driver         = Column(String(100))
+    feature_vector              = Column(JSON)
+
+    created_at                  = Column(DateTime, default=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="risk_scores")
+
+    @property
+    def risk_tier_label(self) -> str:
+        return (self.holistic_risk_tier or "unknown").replace("_", " ").title()
+
+    __table_args__ = (
+        Index("idx_crs_customer_date", "customer_id", "snapshot_date"),
     )

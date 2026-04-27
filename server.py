@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from anthropic import AsyncAnthropic
 
 from database import SessionLocal, init_db
-from seed import seed_demo_data
+from seed import seed_demo_data, seed_holistic_data
 from outreach import select_candidates, record_dispatch
 from channels import get_config, CHANNELS
 from models import (
@@ -21,10 +21,12 @@ from models import (
     HardshipType, HardshipProgram,
     ComplianceEventType,
 )
+from scoring import build_customer_360_payload
 
 # ── Startup ────────────────────────────────────────────────────────────────────
 init_db()
 seed_demo_data()
+seed_holistic_data()
 
 app = FastAPI(title="Collections AI Agent")
 client = AsyncAnthropic()
@@ -97,6 +99,8 @@ Use empathetic framing:
 ## TOOL USAGE
 Always use lookup_account before discussing any specific figures. If a customer doesn't know their account number, look them up by name. After arranging a solution, always use the appropriate tool to document it.
 
+Use get_customer_profile when you need a deeper holistic view: the customer mentions other debts, a recent life event (job loss, medical emergency, divorce), or when the initial account lookup suggests high chargeoff risk and you want to understand the full financial picture before recommending a solution. This tool shows cross-creditor stress, banking signals, and active life events — use these insights to tailor your empathetic response and choose the right offer.
+
 Start every session: greet the customer warmly, state your name and company, give the FDCPA disclosure briefly, then ask for their account number or name so you can pull up their information.
 
 Demo accounts available: ACC001 (Sarah Johnson), ACC002 (Marcus Thompson), ACC003 (Elena Rodriguez)."""
@@ -140,6 +144,20 @@ TOOLS = [
                 },
             },
             "required": ["account_number", "monthly_amount", "duration_months"],
+        },
+    },
+    {
+        "name": "get_customer_profile",
+        "description": "Retrieve the holistic Customer 360 profile for a given account. Returns cross-creditor bureau tradelines, banking behavior signals, active life events, component risk scores, chargeoff prediction, and recommended strategy. Use when the customer mentions other debts or life events, or when you need deeper context to choose the right offer.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "account_number": {
+                    "type": "string",
+                    "description": "Account number (e.g. ACC001)",
+                },
+            },
+            "required": ["account_number"],
         },
     },
     {
@@ -440,6 +458,10 @@ def db_enroll_hardship(account_number: str, hardship_reason: str, program_type: 
         db.close()
 
 
+def db_get_customer_profile(account_number: str) -> dict:
+    return build_customer_360_payload(account_number)
+
+
 # ── Conversation persistence ───────────────────────────────────────────────────
 
 def _account_ids_from_messages(messages: list) -> tuple[str | None, str | None]:
@@ -558,6 +580,8 @@ def execute_tool(name: str, inputs: dict) -> dict:
             inputs["hardship_reason"],
             inputs["program_type"],
         )
+    if name == "get_customer_profile":
+        return db_get_customer_profile(inputs["account_number"])
     return {"error": f"Unknown tool: {name}"}
 
 
@@ -947,6 +971,11 @@ Requirements:
 @app.post("/outreach/dispatch")
 async def outreach_dispatch(request: OutreachDispatchRequest):
     return record_dispatch(request.account_number, request.channel, request.message)
+
+
+@app.get("/customer/{account_number}/profile")
+async def customer_profile(account_number: str):
+    return build_customer_360_payload(account_number)
 
 
 if __name__ == "__main__":
