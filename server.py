@@ -1,12 +1,28 @@
 import json
 import os
+from datetime import date
+from decimal import Decimal
+
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from anthropic import AsyncAnthropic
 
-from mock_data import lookup_customer, create_payment_plan_record, enroll_hardship_record
+from database import SessionLocal, init_db
+from seed import seed_demo_data
+from models import (
+    Account, Customer, ContactPreference, PaymentHistory, RiskProfile,
+    Interaction, PaymentArrangement, HardshipEnrollment, ComplianceEvent,
+    Channel, ContactStatus, InteractionOutcome,
+    ArrangementType, ArrangementStatus,
+    HardshipType, HardshipProgram,
+    ComplianceEventType,
+)
+
+# ── Startup ────────────────────────────────────────────────────────────────────
+init_db()
+seed_demo_data()
 
 app = FastAPI(title="Collections AI Agent")
 client = AsyncAnthropic()
@@ -17,6 +33,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Prompts & Tools ────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are Alex, a compassionate Financial Wellness Advisor at Premier Bank's Customer Success team. You are NOT a collections agent — you are a relationship manager who calls when a customer may need support managing their account.
 
@@ -145,27 +163,306 @@ TOOLS = [
 ]
 
 
+# ── DB-backed tool functions ───────────────────────────────────────────────────
+
+def _risk_tier(score: int | None) -> str:
+    if score is None:
+        return "Unknown"
+    if score < 400:
+        return "Low"
+    if score < 700:
+        return "Medium"
+    return "High"
+
+
+def _infer_hardship_type(reason: str) -> HardshipType:
+    r = reason.lower()
+    if any(k in r for k in ("job", "unemploy", "laid off", "layoff")):
+        return HardshipType.JOB_LOSS
+    if any(k in r for k in ("medical", "health", "hospital", "illness")):
+        return HardshipType.MEDICAL_EMERGENCY
+    if any(k in r for k in ("divorce", "separation", "separat")):
+        return HardshipType.DIVORCE_SEPARATION
+    if any(k in r for k in ("death", "passed", "bereavement")):
+        return HardshipType.DEATH_IN_FAMILY
+    if any(k in r for k in ("disaster", "flood", "hurricane", "fire")):
+        return HardshipType.NATURAL_DISASTER
+    if any(k in r for k in ("military", "deployment", "deploy")):
+        return HardshipType.MILITARY_DEPLOYMENT
+    if any(k in r for k in ("income", "pay cut", "reduced")):
+        return HardshipType.INCOME_REDUCTION
+    return HardshipType.OTHER
+
+
+def db_lookup_account(account_number=None, name=None) -> dict:
+    db = SessionLocal()
+    try:
+        acc = None
+        if account_number:
+            acc = (
+                db.query(Account)
+                .filter(Account.account_number == account_number.upper().strip())
+                .first()
+            )
+        if not acc and name:
+            name_lower = name.strip().lower()
+            for candidate in db.query(Account).join(Customer).all():
+                full = f"{candidate.customer.first_name} {candidate.customer.last_name}".lower()
+                if name_lower in full:
+                    acc = candidate
+                    break
+
+        if not acc:
+            return {
+                "found": False,
+                "message": "Customer not found.",
+                "demo_accounts": [
+                    "ACC001 — Sarah Johnson (37 days past due, $2,847 balance)",
+                    "ACC002 — Marcus Thompson (68 days past due, $7,234 balance)",
+                    "ACC003 — Elena Rodriguez (22 days past due, $4,512 balance)",
+                ],
+            }
+
+        if acc.do_not_contact:
+            return {
+                "found": True,
+                "account_number": acc.account_number,
+                "do_not_contact": True,
+                "message": "Cease-and-desist on file. Do not proceed with outbound contact.",
+            }
+
+        cust = acc.customer
+        prefs = cust.contact_preferences
+        email = next((p.contact_value for p in prefs if p.channel == "email"), None)
+        phone = next((p.contact_value for p in prefs if p.channel == "voice_mobile"), None)
+
+        last_pmt = acc.payment_history[0] if acc.payment_history else None
+        risk = acc.latest_risk
+
+        result = {
+            "found": True,
+            "account_number": acc.account_number,
+            "name": f"{cust.first_name} {cust.last_name}",
+            "email": email,
+            "phone": phone,
+            "balance": float(acc.current_balance),
+            "minimum_due": float(acc.minimum_payment_due),
+            "days_past_due": acc.days_past_due,
+            "credit_limit": float(acc.credit_limit),
+            "interest_rate": round(float(acc.apr_purchase) * 100, 2) if acc.apr_purchase else None,
+            "account_opened": acc.opened_date.strftime("%b %Y") if acc.opened_date else None,
+            "hardship_enrolled": acc.hardship_enrolled,
+            "payment_plan_active": acc.payment_plan_active,
+            "dispute_active": acc.dispute_active,
+        }
+
+        if last_pmt:
+            result["last_payment"] = {
+                "date": last_pmt.payment_date.strftime("%b %d, %Y"),
+                "amount": float(last_pmt.amount_paid),
+            }
+
+        if risk:
+            result["risk_tier"] = _risk_tier(risk.delinquency_risk_score)
+            result["suggested_action"] = risk.recommended_offer
+            result["hardship_probability"] = risk.hardship_probability
+            result["payment_propensity_score"] = risk.payment_propensity_score
+
+        return result
+    finally:
+        db.close()
+
+
+def db_create_payment_plan(
+    account_number: str,
+    monthly_amount: float,
+    duration_months: int,
+    start_date: str = "next billing cycle",
+) -> dict:
+    db = SessionLocal()
+    try:
+        acc = (
+            db.query(Account)
+            .filter(Account.account_number == account_number.upper().strip())
+            .first()
+        )
+        if not acc:
+            return {"success": False, "error": "Account not found"}
+
+        cust = acc.customer
+        today = date.today()
+
+        interaction = Interaction(
+            account_id=acc.id,
+            customer_id=cust.id,
+            channel=Channel.INBOUND_CHAT,
+            direction="inbound",
+            initiated_by="customer",
+            is_ai_handled=True,
+            contact_status=ContactStatus.CONNECTED,
+            outcome=InteractionOutcome.ARRANGEMENT_SET,
+            fdcpa_disclosure_given=True,
+        )
+        db.add(interaction)
+        db.flush()
+
+        total = round(monthly_amount * duration_months, 2)
+        arrangement = PaymentArrangement(
+            account_id=acc.id,
+            interaction_id=interaction.id,
+            arrangement_type=ArrangementType.PAYMENT_PLAN,
+            total_amount=Decimal(str(total)),
+            monthly_amount=Decimal(str(monthly_amount)),
+            number_of_installments=duration_months,
+            start_date=today,
+            status=ArrangementStatus.ACTIVE,
+            created_by="AI_AGENT",
+        )
+        db.add(arrangement)
+
+        acc.payment_plan_active = True
+        db.commit()
+
+        email = next(
+            (p.contact_value for p in cust.contact_preferences if p.channel == "email"), "email on file"
+        )
+        return {
+            "success": True,
+            "plan_id": arrangement.id[:8].upper(),
+            "customer": f"{cust.first_name} {cust.last_name}",
+            "monthly_payment": f"${monthly_amount:,.2f}",
+            "duration": f"{duration_months} months",
+            "start_date": start_date,
+            "total_to_pay": f"${total:,.2f}",
+            "current_balance": f"${float(acc.current_balance):,.2f}",
+            "confirmation": f"Payment plan confirmed. Details sent to {email}.",
+        }
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+_HARDSHIP_PROGRAMS = {
+    "reduced_interest": {
+        "label": "Reduced Interest",
+        "detail": "Interest rate reduced to 0% for 12 months",
+    },
+    "fee_waiver": {
+        "label": "Fee Waiver",
+        "detail": "All late fees and penalty charges waived immediately",
+    },
+    "payment_deferral": {
+        "label": "Payment Deferral",
+        "detail": "90-day payment deferral — no penalties during deferral period",
+    },
+    "full_hardship": {
+        "label": "Full Hardship Package",
+        "detail": "0% interest + all fees waived + 60-day deferral",
+    },
+}
+
+_PROGRAM_ENUM = {
+    "reduced_interest": HardshipProgram.REDUCED_INTEREST,
+    "fee_waiver": HardshipProgram.FEE_WAIVER,
+    "payment_deferral": HardshipProgram.PAYMENT_DEFERRAL,
+    "full_hardship": HardshipProgram.FULL_HARDSHIP,
+}
+
+
+def db_enroll_hardship(account_number: str, hardship_reason: str, program_type: str) -> dict:
+    db = SessionLocal()
+    try:
+        acc = (
+            db.query(Account)
+            .filter(Account.account_number == account_number.upper().strip())
+            .first()
+        )
+        if not acc:
+            return {"success": False, "error": "Account not found"}
+
+        cust = acc.customer
+        today = date.today()
+        prog_info = _HARDSHIP_PROGRAMS.get(program_type, {"label": program_type, "detail": "Custom program"})
+
+        interaction = Interaction(
+            account_id=acc.id,
+            customer_id=cust.id,
+            channel=Channel.INBOUND_CHAT,
+            direction="inbound",
+            initiated_by="customer",
+            is_ai_handled=True,
+            contact_status=ContactStatus.CONNECTED,
+            outcome=InteractionOutcome.HARDSHIP_IDENTIFIED,
+            fdcpa_disclosure_given=True,
+        )
+        db.add(interaction)
+        db.flush()
+
+        enrollment = HardshipEnrollment(
+            account_id=acc.id,
+            interaction_id=interaction.id,
+            hardship_type=_infer_hardship_type(hardship_reason),
+            hardship_description=hardship_reason,
+            program_type=_PROGRAM_ENUM.get(program_type, HardshipProgram.CUSTOM),
+            program_start_date=today,
+            enrolled_by="AI_AGENT",
+        )
+        db.add(enrollment)
+
+        acc.hardship_enrolled = True
+        db.commit()
+
+        email = next(
+            (p.contact_value for p in cust.contact_preferences if p.channel == "email"), "email on file"
+        )
+        return {
+            "success": True,
+            "enrollment_id": enrollment.id[:8].upper(),
+            "customer": f"{cust.first_name} {cust.last_name}",
+            "program": prog_info["label"],
+            "details": prog_info["detail"],
+            "reason_on_file": hardship_reason,
+            "next_steps": [
+                "Account updated immediately",
+                f"Welcome letter sent to {email}",
+                "30-day follow-up call scheduled",
+            ],
+            "confirmation": f"Enrollment confirmed. Details sent to {email}.",
+        }
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+# ── Tool dispatch ──────────────────────────────────────────────────────────────
+
 def execute_tool(name: str, inputs: dict) -> dict:
     if name == "lookup_account":
-        return lookup_customer(
+        return db_lookup_account(
             account_number=inputs.get("account_number"),
             name=inputs.get("name"),
         )
-    elif name == "create_payment_plan":
-        return create_payment_plan_record(
+    if name == "create_payment_plan":
+        return db_create_payment_plan(
             inputs["account_number"],
             inputs["monthly_amount"],
             inputs["duration_months"],
             inputs.get("start_date", "next billing cycle"),
         )
-    elif name == "enroll_hardship_program":
-        return enroll_hardship_record(
+    if name == "enroll_hardship_program":
+        return db_enroll_hardship(
             inputs["account_number"],
             inputs["hardship_reason"],
             inputs["program_type"],
         )
     return {"error": f"Unknown tool: {name}"}
 
+
+# ── API ────────────────────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
     messages: list
@@ -211,20 +508,17 @@ async def chat(request: ChatRequest):
                 break
 
             elif final.stop_reason == "tool_use":
-                # Build assistant content dict for history
                 assistant_content = []
                 for block in final.content:
                     if block.type == "text":
                         assistant_content.append({"type": "text", "text": block.text})
                     elif block.type == "tool_use":
-                        assistant_content.append(
-                            {
-                                "type": "tool_use",
-                                "id": block.id,
-                                "name": block.name,
-                                "input": block.input,
-                            }
-                        )
+                        assistant_content.append({
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        })
 
                 current_messages = current_messages + [
                     {"role": "assistant", "content": assistant_content}
@@ -239,13 +533,11 @@ async def chat(request: ChatRequest):
 
                         yield f"data: {json.dumps({'type': 'tool_result', 'tool': block.name, 'data': result})}\n\n"
 
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": json.dumps(result),
-                            }
-                        )
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(result),
+                        })
 
                 current_messages = current_messages + [
                     {"role": "user", "content": tool_results}
