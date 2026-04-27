@@ -336,6 +336,23 @@
       margin-top: 0.25rem;
     }
 
+    /* ── Interaction history (account panel) ── */
+    .history-item {
+      display: flex; gap: 0.6rem; align-items: flex-start;
+      padding: 0.5rem 0; border-bottom: 1px solid #0f172a; font-size: 0.76rem;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .ch-badge {
+      font-size: 0.68rem; font-weight: 600; padding: 0.15rem 0.45rem;
+      border-radius: 4px; flex-shrink: 0; margin-top: 1px;
+    }
+    .ch-inbound_chat, .ch-outbound_chat   { background:#1e3a5f; color:#93c5fd; }
+    .ch-inbound_sms,  .ch-outbound_sms    { background:#064e3b; color:#6ee7b7; }
+    .ch-inbound_email,.ch-outbound_email  { background:#3b1f7f; color:#c4b5fd; }
+    .ch-inbound_call, .ch-outbound_call   { background:#78350f; color:#fcd34d; }
+    .history-meta { color:#64748b; }
+    .history-preview { color:#94a3b8; margin-top:2px; }
+
     /* ── Tabs ── */
     .tab-bar { display: flex; gap: 0.25rem; margin-left: 1.5rem; }
     .tab {
@@ -345,6 +362,58 @@
     }
     .tab:hover { background: #1e293b; color: #e2e8f0; }
     .tab.active { background: #1e40af; color: #dbeafe; }
+
+    /* ── Inbound Simulator ── */
+    #inboundView {
+      flex: 1; overflow-y: auto; padding: 1.5rem; background: #0b1120;
+    }
+    .sim-card {
+      background: #111827; border: 1px solid #1e293b; border-radius: 12px;
+      padding: 1.5rem; max-width: 700px;
+    }
+    .sim-row { display: flex; gap: 0.75rem; margin-bottom: 0.85rem; flex-wrap: wrap; }
+    .sim-label { font-size: 0.75rem; color: #64748b; margin-bottom: 0.3rem; }
+    .sim-input {
+      background: #0f172a; border: 1px solid #1e293b; color: #e2e8f0;
+      padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.87rem; width: 100%;
+    }
+    .sim-input:focus { outline: none; border-color: #3b82f6; }
+    .sim-select {
+      background: #0f172a; border: 1px solid #1e293b; color: #e2e8f0;
+      padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.87rem;
+    }
+    .sim-textarea {
+      background: #0f172a; border: 1px solid #1e293b; color: #e2e8f0;
+      padding: 0.65rem 0.75rem; border-radius: 8px; font-size: 0.87rem;
+      width: 100%; min-height: 80px; resize: vertical; font-family: inherit;
+    }
+    .sim-textarea:focus { outline: none; border-color: #3b82f6; }
+    .sim-send-btn {
+      background: #1d4ed8; border: none; color: white; cursor: pointer;
+      padding: 0.55rem 1.25rem; border-radius: 8px; font-size: 0.9rem;
+      font-weight: 600; transition: background 0.15s;
+    }
+    .sim-send-btn:hover { background: #2563eb; }
+    .sim-send-btn:disabled { background: #1e293b; color: #475569; cursor: not-allowed; }
+    .reply-panel {
+      margin-top: 1.25rem; background: #0f172a; border: 1px solid #1e293b;
+      border-radius: 10px; padding: 1rem; display: none;
+    }
+    .reply-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.65rem;
+    }
+    .reply-channel-badge {
+      font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem;
+      border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .reply-text {
+      color: #e2e8f0; font-size: 0.87rem; line-height: 1.65; white-space: pre-wrap;
+    }
+    .reply-meta {
+      margin-top: 0.75rem; font-size: 0.74rem; color: #475569; display: flex; gap: 1rem;
+    }
+    .reply-logged { color: #34d399; }
 
     /* ── Outreach Queue ── */
     #outreachView {
@@ -420,6 +489,7 @@
   <div class="tab-bar">
     <button class="tab active" id="tabChat" onclick="switchTab('chat')">Chat</button>
     <button class="tab" id="tabOutreach" onclick="switchTab('outreach')">Outreach Queue</button>
+    <button class="tab" id="tabInbound" onclick="switchTab('inbound')">Inbound Simulator</button>
   </div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
     <div class="status-dot"></div>
@@ -463,8 +533,52 @@
       Account details will appear here once Alex looks up your information.
     </div>
     <div id="accountDetails" style="display:none;display:flex;flex-direction:column;gap:0.75rem"></div>
+    <div id="interactionHistory" style="display:none">
+      <div class="panel-title" style="margin-bottom:0.5rem">Recent Interactions</div>
+      <div id="historyList"></div>
+    </div>
   </div>
 </div><!-- /chatView -->
+
+<div id="inboundView" style="display:none">
+  <div style="margin-bottom:1.25rem">
+    <div class="outreach-title">Inbound Channel Simulator</div>
+    <div class="outreach-sub">Test how Alex responds on each channel — SMS, Email, Voice, or Chat</div>
+  </div>
+  <div class="sim-card">
+    <div class="sim-row">
+      <div style="flex:0 0 160px">
+        <div class="sim-label">Channel</div>
+        <select class="sim-select" id="simChannel" onchange="updateSimFrom()">
+          <option value="sms">SMS</option>
+          <option value="email">Email</option>
+          <option value="voice">Voice</option>
+          <option value="chat">Chat</option>
+        </select>
+      </div>
+      <div style="flex:1">
+        <div class="sim-label" id="simFromLabel">From (phone number)</div>
+        <input class="sim-input" id="simFrom" placeholder="(555) 010-1001" />
+      </div>
+    </div>
+    <div style="margin-bottom:0.85rem">
+      <div class="sim-label" id="simSubjectRow" style="display:none">Subject</div>
+      <input class="sim-input" id="simSubject" placeholder="Subject line..." style="display:none;margin-bottom:0.5rem" />
+      <div class="sim-label">Message</div>
+      <textarea class="sim-textarea" id="simBody" placeholder="Type the customer's inbound message..."></textarea>
+    </div>
+    <button class="sim-send-btn" id="simSendBtn" onclick="simulateInbound()">Send Inbound Message</button>
+
+    <div class="reply-panel" id="replyPanel">
+      <div class="reply-header">
+        <span style="font-size:0.8rem;font-weight:600;color:#94a3b8">Alex's Response</span>
+        <span class="reply-channel-badge" id="replyBadge"></span>
+      </div>
+      <div class="reply-text" id="replyText"></div>
+      <div class="reply-meta" id="replyMeta"></div>
+    </div>
+  </div>
+</div>
 
 <div id="outreachView" style="display:none">
   <div class="outreach-header">
@@ -677,6 +791,7 @@
   // ── Account panel ─────────────────────────────────────────────
   function renderAccountPanel(data) {
     document.getElementById('noAccount').style.display = 'none';
+    loadInteractionHistory(data.account_number);
     const panel = document.getElementById('accountDetails');
     panel.style.display = 'flex';
     panel.style.flexDirection = 'column';
@@ -737,14 +852,111 @@
     `;
   }
 
+  // ── Interaction history (account panel) ──────────────────────
+  async function loadInteractionHistory(accountNumber) {
+    const wrap = document.getElementById('interactionHistory');
+    const list = document.getElementById('historyList');
+    wrap.style.display = 'block';
+    list.innerHTML = '<div style="color:#334155;font-size:0.75rem">Loading…</div>';
+    try {
+      const res = await fetch(`/conversations/${accountNumber}`);
+      const data = await res.json();
+      if (!data.interactions || !data.interactions.length) {
+        list.innerHTML = '<div style="color:#334155;font-size:0.75rem;padding:0.3rem 0">No interactions on record.</div>';
+        return;
+      }
+      list.innerHTML = data.interactions.slice(0, 6).map(i => {
+        const dt = i.datetime ? new Date(i.datetime).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+        const dir = i.direction === 'outbound' ? '&#8593;' : '&#8595;';
+        const chClass = `ch-${i.channel || 'inbound_chat'}`;
+        const chLabel = (i.channel || 'chat').replace('inbound_','').replace('outbound_','').toUpperCase();
+        return `<div class="history-item">
+          <span class="ch-badge ${chClass}">${chLabel}</span>
+          <div>
+            <div class="history-meta">${dir} ${dt}${i.outcome ? ' · ' + i.outcome.replace(/_/g,' ') : ''}</div>
+            ${i.preview ? `<div class="history-preview">${escHtml(i.preview)}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    } catch {
+      list.innerHTML = '';
+    }
+  }
+
+  // ── Inbound Simulator ─────────────────────────────────────────
+  const _chColors = { sms:'#065f46', email:'#6d28d9', voice:'#b45309', chat:'#1e40af' };
+
+  function updateSimFrom() {
+    const ch = document.getElementById('simChannel').value;
+    document.getElementById('simFromLabel').textContent = ch === 'email' ? 'From (email address)' : 'From (phone number)';
+    document.getElementById('simFrom').placeholder = ch === 'email' ? 'customer@email.com' : '(555) 010-1001';
+    const showSubject = ch === 'email';
+    document.getElementById('simSubjectRow').style.display = showSubject ? 'block' : 'none';
+    document.getElementById('simSubject').style.display   = showSubject ? 'block' : 'none';
+  }
+
+  async function simulateInbound() {
+    const ch    = document.getElementById('simChannel').value;
+    const from  = document.getElementById('simFrom').value.trim();
+    const body  = document.getElementById('simBody').value.trim();
+    if (!from || !body) { alert('Enter a "from" value and a message.'); return; }
+
+    const btn = document.getElementById('simSendBtn');
+    btn.disabled = true; btn.textContent = 'Sending…';
+
+    const replyPanel = document.getElementById('replyPanel');
+    const replyText  = document.getElementById('replyText');
+    const replyBadge = document.getElementById('replyBadge');
+    const replyMeta  = document.getElementById('replyMeta');
+    replyPanel.style.display = 'block';
+    replyBadge.textContent = ch.toUpperCase();
+    replyBadge.style.background = _chColors[ch] || '#1e293b';
+    replyBadge.style.color = '#fff';
+    replyText.textContent = 'Processing…';
+    replyMeta.innerHTML = '';
+
+    try {
+      let endpoint, payload;
+      if (ch === 'email') {
+        endpoint = '/inbound/email';
+        payload  = { from_email: from, subject: document.getElementById('simSubject').value.trim(), body };
+      } else {
+        endpoint = '/inbound/sms';
+        payload  = { from_number: from, body };
+        if (ch !== 'sms') payload.channel = ch;
+      }
+
+      const res  = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      replyText.textContent = data.reply || '(no response)';
+
+      const parts = [];
+      if (data.char_count != null) parts.push(`${data.char_count}/160 chars`);
+      if (data.customer_found) parts.push(`Customer: ${data.account_number}`);
+      else parts.push('Customer not matched');
+      if (data.interaction_id) parts.push(`<span class="reply-logged">Logged: ${data.interaction_id}</span>`);
+      replyMeta.innerHTML = parts.join(' &middot; ');
+    } catch (e) {
+      replyText.textContent = 'Error: ' + e.message;
+    }
+
+    btn.disabled = false; btn.textContent = 'Send Inbound Message';
+  }
+
   // ── Tab switching ─────────────────────────────────────────────
   function switchTab(tab) {
-    const isChat = tab === 'chat';
-    document.getElementById('chatView').style.display = isChat ? 'flex' : 'none';
-    document.getElementById('outreachView').style.display = isChat ? 'none' : 'block';
-    document.getElementById('tabChat').classList.toggle('active', isChat);
-    document.getElementById('tabOutreach').classList.toggle('active', !isChat);
-    if (!isChat) loadCandidates();
+    document.getElementById('chatView').style.display     = tab === 'chat'     ? 'flex'  : 'none';
+    document.getElementById('outreachView').style.display = tab === 'outreach' ? 'block' : 'none';
+    document.getElementById('inboundView').style.display  = tab === 'inbound'  ? 'block' : 'none';
+    ['Chat','Outreach','Inbound'].forEach(t =>
+      document.getElementById('tab' + t).classList.toggle('active', tab === t.toLowerCase())
+    );
+    if (tab === 'outreach') loadCandidates();
   }
 
   // ── Outreach Queue ────────────────────────────────────────────

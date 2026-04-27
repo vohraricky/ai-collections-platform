@@ -12,6 +12,7 @@ from anthropic import AsyncAnthropic
 from database import SessionLocal, init_db
 from seed import seed_demo_data
 from outreach import select_candidates, record_dispatch
+from channels import get_config, CHANNELS
 from models import (
     Account, Customer, ContactPreference, PaymentHistory, RiskProfile,
     Interaction, PaymentArrangement, HardshipEnrollment, ComplianceEvent,
@@ -564,6 +565,7 @@ def execute_tool(name: str, inputs: dict) -> dict:
 
 class ChatRequest(BaseModel):
     messages: list
+    channel: str = "chat"
 
 
 class OutreachGenerateRequest(BaseModel):
@@ -593,6 +595,7 @@ async def serve_ui():
 @app.post("/chat")
 async def chat(request: ChatRequest):
     messages = [{"role": m["role"], "content": m["content"]} for m in request.messages]
+    ch = get_config(request.channel)
 
     async def generate():
         current_messages = messages
@@ -608,11 +611,15 @@ async def chat(request: ChatRequest):
                             "type": "text",
                             "text": SYSTEM_PROMPT,
                             "cache_control": {"type": "ephemeral"},
-                        }
+                        },
+                        {
+                            "type": "text",
+                            "text": ch.prompt_addendum,
+                        },
                     ],
                     tools=TOOLS,
                     messages=current_messages,
-                    max_tokens=1024,
+                    max_tokens=ch.max_tokens,
                     thinking={"type": "disabled"},
                 ) as stream:
                     async for event in stream:
@@ -681,6 +688,207 @@ async def chat(request: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/channels")
+async def list_channels():
+    return {k: {"name": v.name, "icon": v.icon, "color": v.color} for k, v in CHANNELS.items()}
+
+
+async def run_agent_sync(messages: list, channel: str = "chat") -> str:
+    """Full tool-use loop, non-streaming. Returns final text response."""
+    ch = get_config(channel)
+    current = messages
+    while True:
+        resp = await client.messages.create(
+            model="claude-sonnet-4-6",
+            system=[
+                {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": ch.prompt_addendum},
+            ],
+            tools=TOOLS,
+            messages=current,
+            max_tokens=ch.max_tokens,
+            thinking={"type": "disabled"},
+        )
+        if resp.stop_reason == "end_turn":
+            text = next((b.text for b in resp.content if b.type == "text"), "")
+            return ch.format_response(text)
+        if resp.stop_reason == "tool_use":
+            asst = []
+            for b in resp.content:
+                if b.type == "text":
+                    asst.append({"type": "text", "text": b.text})
+                elif b.type == "tool_use":
+                    asst.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+            current = current + [{"role": "assistant", "content": asst}]
+            results = []
+            for b in resp.content:
+                if b.type == "tool_use":
+                    results.append({
+                        "type": "tool_result",
+                        "tool_use_id": b.id,
+                        "content": json.dumps(execute_tool(b.name, b.input)),
+                    })
+            current = current + [{"role": "user", "content": results}]
+        else:
+            return ""
+
+
+def _lookup_by_contact(value: str) -> dict:
+    """Find an account via a phone number or email address."""
+    db = SessionLocal()
+    try:
+        pref = (
+            db.query(ContactPreference)
+            .filter(ContactPreference.contact_value == value)
+            .first()
+        )
+        if not pref:
+            return {"found": False}
+        acc = db.query(Account).filter(Account.customer_id == pref.customer_id).first()
+        if not acc:
+            return {"found": False}
+        return db_lookup_account(account_number=acc.account_number)
+    finally:
+        db.close()
+
+
+def _record_inbound_interaction(
+    account_data: dict,
+    inbound_text: str,
+    reply_text: str,
+    channel: str,
+) -> str | None:
+    if not account_data.get("found"):
+        return None
+    db = SessionLocal()
+    try:
+        acc = (
+            db.query(Account)
+            .filter(Account.account_number == account_data["account_number"])
+            .first()
+        )
+        if not acc:
+            return None
+        from channels import CHANNELS as CH_MAP
+        from models import Channel as ChannelEnum
+        ch_enum_map = {
+            "sms":   ChannelEnum.INBOUND_SMS,
+            "email": ChannelEnum.INBOUND_EMAIL,
+            "voice": ChannelEnum.INBOUND_CALL,
+            "chat":  ChannelEnum.INBOUND_CHAT,
+        }
+        interaction = Interaction(
+            account_id=acc.id,
+            customer_id=acc.customer_id,
+            channel=ch_enum_map.get(channel, ChannelEnum.INBOUND_CHAT),
+            direction="inbound",
+            initiated_by="customer",
+            is_ai_handled=True,
+            ai_agent_version="alex-v1",
+            contact_status=ContactStatus.CONNECTED,
+            outcome=InteractionOutcome.NO_RESOLUTION,
+            fdcpa_disclosure_given=True,
+            notes=json.dumps({"inbound": inbound_text, "reply": reply_text}),
+        )
+        db.add(interaction)
+        db.commit()
+        return interaction.id[:8].upper()
+    except Exception:
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+
+class InboundSMSRequest(BaseModel):
+    from_number: str
+    body: str
+
+
+class InboundEmailRequest(BaseModel):
+    from_email: str
+    subject: str = ""
+    body: str
+
+
+@app.post("/inbound/sms")
+async def inbound_sms(request: InboundSMSRequest):
+    acct = _lookup_by_contact(request.from_number)
+    ctx = f"[Inbound SMS from {request.from_number}]\n" + (
+        f"Account on file: {acct['account_number']} — {acct['name']}\n" if acct.get("found") else ""
+    )
+    messages = [{"role": "user", "content": ctx + request.body}]
+    reply = await run_agent_sync(messages, channel="sms")
+    interaction_id = _record_inbound_interaction(acct, request.body, reply, "sms")
+    return {
+        "reply": reply,
+        "channel": "sms",
+        "char_count": len(reply),
+        "customer_found": acct.get("found", False),
+        "account_number": acct.get("account_number"),
+        "interaction_id": interaction_id,
+    }
+
+
+@app.post("/inbound/email")
+async def inbound_email(request: InboundEmailRequest):
+    acct = _lookup_by_contact(request.from_email)
+    ctx = f"[Inbound Email from {request.from_email}]\nSubject: {request.subject}\n\n" + (
+        f"Account on file: {acct['account_number']} — {acct['name']}\n\n" if acct.get("found") else ""
+    )
+    messages = [{"role": "user", "content": ctx + request.body}]
+    reply = await run_agent_sync(messages, channel="email")
+    interaction_id = _record_inbound_interaction(acct, request.body, reply, "email")
+    return {
+        "reply": reply,
+        "channel": "email",
+        "customer_found": acct.get("found", False),
+        "account_number": acct.get("account_number"),
+        "interaction_id": interaction_id,
+    }
+
+
+@app.get("/conversations/{account_number}")
+async def get_conversations(account_number: str):
+    db = SessionLocal()
+    try:
+        acc = (
+            db.query(Account)
+            .filter(Account.account_number == account_number.upper())
+            .first()
+        )
+        if not acc:
+            return {"found": False, "interactions": []}
+        rows = []
+        for i in acc.interactions:
+            # Don't send raw full transcript — just a preview
+            notes_raw = i.notes or ""
+            if notes_raw.startswith("["):
+                preview = None          # JSON transcript — skip
+            elif notes_raw.startswith("{"):
+                try:
+                    d = json.loads(notes_raw)
+                    preview = d.get("inbound", "")[:80]
+                except Exception:
+                    preview = notes_raw[:80]
+            else:
+                preview = notes_raw[:80]
+
+            rows.append({
+                "id": i.id[:8].upper(),
+                "datetime": i.interaction_datetime.isoformat() if i.interaction_datetime else None,
+                "channel": i.channel.value if i.channel else None,
+                "direction": i.direction,
+                "outcome": i.outcome.value if i.outcome else None,
+                "duration_seconds": i.duration_seconds,
+                "is_ai": i.is_ai_handled,
+                "preview": preview,
+            })
+        return {"found": True, "account_number": account_number.upper(), "interactions": rows}
+    finally:
+        db.close()
 
 
 @app.get("/outreach/candidates")
