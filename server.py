@@ -11,6 +11,7 @@ from anthropic import AsyncAnthropic
 
 from database import SessionLocal, init_db
 from seed import seed_demo_data
+from outreach import select_candidates, record_dispatch
 from models import (
     Account, Customer, ContactPreference, PaymentHistory, RiskProfile,
     Interaction, PaymentArrangement, HardshipEnrollment, ComplianceEvent,
@@ -565,6 +566,25 @@ class ChatRequest(BaseModel):
     messages: list
 
 
+class OutreachGenerateRequest(BaseModel):
+    account_number: str
+    name: str
+    days_past_due: int
+    balance: float
+    risk_tier: str
+    hardship_probability: float | None = None
+    payment_propensity_score: int | None = None
+    suggested_action: str | None = None
+    last_payment_date: str | None = None
+    channel: str = "email"
+
+
+class OutreachDispatchRequest(BaseModel):
+    account_number: str
+    channel: str
+    message: str
+
+
 @app.get("/")
 async def serve_ui():
     return FileResponse("static/index.html")
@@ -661,6 +681,64 @@ async def chat(request: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/outreach/candidates")
+async def outreach_candidates():
+    return select_candidates()
+
+
+@app.post("/outreach/generate")
+async def outreach_generate(request: OutreachGenerateRequest):
+    channel_ctx = {
+        "email": "Write a professional warm email. Format: SUBJECT: ...\n\nBODY:\n... (max 150 words total)",
+        "sms":   "Write a concise SMS under 160 characters. No links. Plain text only.",
+        "voice": "Write a 30-second call opening script. Natural spoken language, no stage directions.",
+    }
+
+    prompt = f"""Draft a proactive outreach message for Alex, Premier Bank's Financial Wellness Advisor.
+
+Customer: {request.name}
+Days Past Due: {request.days_past_due}
+Current Balance: ${request.balance:,.2f}
+Risk Assessment: {request.risk_tier}
+Hardship Probability: {int((request.hardship_probability or 0) * 100)}%
+Payment Propensity Score: {request.payment_propensity_score or 'N/A'}/100
+Recommended Approach: {request.suggested_action or 'Proactive wellness outreach'}
+Last Payment: {request.last_payment_date or 'unknown'}
+Channel: {request.channel.upper()}
+
+{channel_ctx.get(request.channel, 'Write a brief outreach message.')}
+
+Requirements:
+- Warm, empathetic — wellness advisor reaching out to help, not a collector demanding payment
+- Include FDCPA disclosure: "This is an attempt to collect a debt"
+- Sign as Alex from Premier Bank Financial Wellness team
+- Mention specific options: payment plan, hardship program, financial counseling referral
+- Never threaten, never demand — always offer help and present options"""
+
+    async def generate():
+        async with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            async for event in stream:
+                if event.type == "content_block_delta":
+                    if hasattr(event.delta, "text") and event.delta.text:
+                        yield f"data: {json.dumps({'type': 'text', 'text': event.delta.text})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/outreach/dispatch")
+async def outreach_dispatch(request: OutreachDispatchRequest):
+    return record_dispatch(request.account_number, request.channel, request.message)
 
 
 if __name__ == "__main__":

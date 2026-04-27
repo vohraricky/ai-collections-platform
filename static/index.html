@@ -335,6 +335,81 @@
       display: inline-block;
       margin-top: 0.25rem;
     }
+
+    /* ── Tabs ── */
+    .tab-bar { display: flex; gap: 0.25rem; margin-left: 1.5rem; }
+    .tab {
+      background: transparent; border: none; color: #64748b;
+      padding: 0.35rem 0.9rem; border-radius: 6px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 500; transition: all 0.15s;
+    }
+    .tab:hover { background: #1e293b; color: #e2e8f0; }
+    .tab.active { background: #1e40af; color: #dbeafe; }
+
+    /* ── Outreach Queue ── */
+    #outreachView {
+      flex: 1; overflow-y: auto; padding: 1.5rem; background: #0b1120;
+    }
+    .outreach-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 1.25rem;
+    }
+    .outreach-title { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; }
+    .outreach-sub { font-size: 0.78rem; color: #64748b; margin-top: 0.2rem; }
+    .refresh-btn {
+      background: #1e293b; border: 1px solid #334155; color: #94a3b8;
+      padding: 0.4rem 0.9rem; border-radius: 8px; cursor: pointer;
+      font-size: 0.82rem; font-weight: 500; transition: all 0.15s;
+    }
+    .refresh-btn:hover { border-color: #3b82f6; color: #60a5fa; }
+    .outreach-grid { display: flex; flex-direction: column; gap: 1rem; max-width: 860px; }
+    .candidate-card {
+      background: #111827; border: 1px solid #1e293b; border-radius: 12px; padding: 1.25rem;
+    }
+    .candidate-header {
+      display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;
+    }
+    .candidate-name { font-size: 1rem; font-weight: 700; color: #f1f5f9; }
+    .candidate-meta { font-size: 0.73rem; color: #475569; margin-top: 3px; }
+    .stat-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .chip {
+      background: #0f172a; border: 1px solid #1e293b; padding: 0.25rem 0.6rem;
+      border-radius: 6px; font-size: 0.75rem; color: #94a3b8;
+    }
+    .chip.urgent { border-color: #7f1d1d; color: #f87171; background: #160404; }
+    .chip.warning { border-color: #78350f; color: #fbbf24; background: #140c00; }
+    .suggested-action {
+      font-size: 0.78rem; color: #5eead4; font-style: italic; margin-bottom: 1rem;
+      border-left: 2px solid #0d9488; padding-left: 0.6rem;
+    }
+    .outreach-controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .channel-select {
+      background: #0f172a; border: 1px solid #1e293b; color: #e2e8f0;
+      padding: 0.35rem 0.65rem; border-radius: 6px; font-size: 0.82rem;
+    }
+    .draft-btn {
+      background: #1d4ed8; border: none; color: white; cursor: pointer;
+      padding: 0.38rem 1rem; border-radius: 8px; font-size: 0.83rem;
+      font-weight: 600; transition: background 0.15s;
+    }
+    .draft-btn:hover { background: #2563eb; }
+    .draft-btn:disabled { background: #1e293b; color: #475569; cursor: not-allowed; }
+    .message-draft {
+      background: #0f172a; border: 1px solid #1e293b; border-radius: 8px;
+      padding: 0.85rem; font-size: 0.83rem; color: #cbd5e1; line-height: 1.65;
+      min-height: 60px; margin-top: 0.85rem; white-space: pre-wrap; display: none;
+    }
+    .dispatch-btn {
+      background: #065f46; border: none; color: #6ee7b7; cursor: pointer;
+      padding: 0.38rem 1rem; border-radius: 8px; font-size: 0.83rem;
+      font-weight: 600; margin-top: 0.6rem; transition: background 0.15s; display: none;
+    }
+    .dispatch-btn:hover { background: #047857; }
+    .dispatch-btn:disabled { background: #1e293b; color: #475569; cursor: not-allowed; }
+    .dispatched-tag {
+      background: #064e3b; color: #34d399; font-size: 0.78rem; font-weight: 600;
+      padding: 0.3rem 0.7rem; border-radius: 6px; display: inline-block; margin-top: 0.6rem;
+    }
   </style>
 </head>
 <body>
@@ -342,6 +417,10 @@
 <header>
   <div class="logo">Premier<span>Bank</span></div>
   <div class="badge">AI Collections</div>
+  <div class="tab-bar">
+    <button class="tab active" id="tabChat" onclick="switchTab('chat')">Chat</button>
+    <button class="tab" id="tabOutreach" onclick="switchTab('outreach')">Outreach Queue</button>
+  </div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem">
     <div class="status-dot"></div>
     <span class="status-label">Alex — Online</span>
@@ -349,6 +428,7 @@
 </header>
 
 <main>
+<div id="chatView" style="display:flex;flex:1;overflow:hidden">
   <!-- Chat -->
   <div class="chat-panel">
     <div class="messages" id="messages"></div>
@@ -384,6 +464,20 @@
     </div>
     <div id="accountDetails" style="display:none;display:flex;flex-direction:column;gap:0.75rem"></div>
   </div>
+</div><!-- /chatView -->
+
+<div id="outreachView" style="display:none">
+  <div class="outreach-header">
+    <div>
+      <div class="outreach-title">Proactive Outreach Queue</div>
+      <div class="outreach-sub">Customers flagged for proactive financial wellness contact</div>
+    </div>
+    <button class="refresh-btn" onclick="loadCandidates()">Refresh</button>
+  </div>
+  <div class="outreach-grid" id="candidateList">
+    <div style="color:#475569;text-align:center;padding:3rem 0">Select the Outreach Queue tab to load candidates.</div>
+  </div>
+</div>
 </main>
 
 <script>
@@ -641,6 +735,172 @@
         <div class="note-box" style="border-color:#0d9488;color:#5eead4">${data.suggested_action}</div>
       </div>
     `;
+  }
+
+  // ── Tab switching ─────────────────────────────────────────────
+  function switchTab(tab) {
+    const isChat = tab === 'chat';
+    document.getElementById('chatView').style.display = isChat ? 'flex' : 'none';
+    document.getElementById('outreachView').style.display = isChat ? 'none' : 'block';
+    document.getElementById('tabChat').classList.toggle('active', isChat);
+    document.getElementById('tabOutreach').classList.toggle('active', !isChat);
+    if (!isChat) loadCandidates();
+  }
+
+  // ── Outreach Queue ────────────────────────────────────────────
+  const _candidates = {};
+
+  async function loadCandidates() {
+    const list = document.getElementById('candidateList');
+    list.innerHTML = '<div style="color:#475569;text-align:center;padding:3rem 0">Loading candidates...</div>';
+    try {
+      const res = await fetch('/outreach/candidates');
+      const data = await res.json();
+      list.innerHTML = '';
+      if (!data.length) {
+        list.innerHTML = '<div style="color:#475569;text-align:center;padding:3rem 0">No candidates require outreach right now.</div>';
+        return;
+      }
+      data.forEach(c => {
+        _candidates[c.account_number] = c;
+        list.appendChild(buildCard(c));
+      });
+    } catch (e) {
+      list.innerHTML = `<div style="color:#f87171;text-align:center;padding:2rem">Failed to load: ${e.message}</div>`;
+    }
+  }
+
+  function buildCard(c) {
+    const el = document.createElement('div');
+    el.className = 'candidate-card';
+    el.id = `card-${c.account_number}`;
+    const dpd = c.days_past_due > 60 ? 'urgent' : c.days_past_due > 30 ? 'warning' : '';
+    const hp  = c.hardship_probability != null ? Math.round(c.hardship_probability * 100) + '%' : '—';
+    const pps = c.payment_propensity_score != null ? c.payment_propensity_score + '/100' : '—';
+    const bucket = (c.delinquency_bucket || '').replace(/_/g, ' ').toUpperCase();
+    const emailSel = c.best_contact_channel === 'email' ? 'selected' : '';
+    const smsSel  = (c.best_contact_channel || '').includes('sms') ? 'selected' : '';
+    const voiceSel = (c.best_contact_channel || '').includes('voice') ? 'selected' : '';
+
+    el.innerHTML = `
+      <div class="candidate-header">
+        <div>
+          <div class="candidate-name">${escHtml(c.name)}</div>
+          <div class="candidate-meta">${c.account_number} &middot; ${bucket}</div>
+        </div>
+        <span class="risk-pill risk-${c.risk_tier}">${c.risk_tier}</span>
+      </div>
+      <div class="stat-chips">
+        <span class="chip ${dpd}">${c.days_past_due} days past due</span>
+        <span class="chip">$${c.balance.toLocaleString('en-US',{minimumFractionDigits:2})}</span>
+        <span class="chip">Hardship: ${hp}</span>
+        <span class="chip">Propensity: ${pps}</span>
+        ${c.unprocessed_signals ? `<span class="chip warning">${c.unprocessed_signals} signal${c.unprocessed_signals !== 1 ? 's' : ''}</span>` : ''}
+      </div>
+      ${c.suggested_action ? `<div class="suggested-action">${escHtml(c.suggested_action)}</div>` : ''}
+      <div class="outreach-controls">
+        <select class="channel-select" id="ch-${c.account_number}">
+          <option value="email" ${emailSel}>Email</option>
+          <option value="sms" ${smsSel}>SMS</option>
+          <option value="voice" ${voiceSel}>Voice Script</option>
+        </select>
+        <button class="draft-btn" id="draftBtn-${c.account_number}"
+          onclick="draftMessage('${c.account_number}')">Draft Message</button>
+      </div>
+      <div class="message-draft" id="draft-${c.account_number}"></div>
+      <button class="dispatch-btn" id="dispatchBtn-${c.account_number}"
+        onclick="logDispatch('${c.account_number}')">Log Dispatch</button>
+    `;
+    return el;
+  }
+
+  async function draftMessage(acctNum) {
+    const c = _candidates[acctNum];
+    const channel = document.getElementById(`ch-${acctNum}`).value;
+    const draftEl = document.getElementById(`draft-${acctNum}`);
+    const draftBtn = document.getElementById(`draftBtn-${acctNum}`);
+    const dispatchBtn = document.getElementById(`dispatchBtn-${acctNum}`);
+
+    draftEl.textContent = '';
+    draftEl.style.display = 'block';
+    dispatchBtn.style.display = 'none';
+    draftBtn.disabled = true;
+    draftBtn.textContent = 'Drafting...';
+
+    const payload = {
+      account_number: acctNum,
+      name: c.name,
+      days_past_due: c.days_past_due,
+      balance: c.balance,
+      risk_tier: c.risk_tier,
+      hardship_probability: c.hardship_probability || null,
+      payment_propensity_score: c.payment_propensity_score || null,
+      suggested_action: c.suggested_action || null,
+      last_payment_date: c.last_payment?.date || null,
+      channel,
+    };
+
+    let message = '';
+    try {
+      const res = await fetch('/outreach/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(line.slice(6).trim());
+            if (ev.type === 'text') { message += ev.text; draftEl.textContent = message; }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      draftEl.textContent = 'Error generating message: ' + e.message;
+    }
+
+    draftBtn.disabled = false;
+    draftBtn.textContent = 'Re-Draft';
+    dispatchBtn.style.display = 'inline-block';
+    dispatchBtn.dataset.message = message;
+    dispatchBtn.dataset.channel = channel;
+  }
+
+  async function logDispatch(acctNum) {
+    const btn = document.getElementById(`dispatchBtn-${acctNum}`);
+    const message = btn.dataset.message;
+    const channel = btn.dataset.channel;
+
+    btn.disabled = true;
+    btn.textContent = 'Logging...';
+
+    try {
+      const res = await fetch('/outreach/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_number: acctNum, channel, message }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        btn.outerHTML = `<span class="dispatched-tag">&#10003; ${escHtml(data.confirmation)}</span>`;
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+        alert('Dispatch failed: ' + data.error);
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+    }
   }
 </script>
 </body>
